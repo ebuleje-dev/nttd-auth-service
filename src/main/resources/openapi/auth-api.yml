@@ -1,0 +1,353 @@
+openapi: 3.0.3
+info:
+  title: Auth Service API
+  description: Authentication and Authorization Service for NTT Data Banking Platform
+  version: 1.0.0
+  contact:
+    name: NTT Data Banking Team
+    email: banking@nttdata.com
+
+servers:
+  - url: http://localhost:8091
+    description: Local development server
+  - url: http://localhost:8080/api
+    description: API Gateway
+
+tags:
+  - name: Authentication
+    description: User authentication and token management
+
+paths:
+  /api/auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate user and generate JWT tokens
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Too many login attempts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register new user
+      description: Create a new user account
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/validate:
+    post:
+      tags:
+        - Authentication
+      summary: Validate JWT token
+      description: Validate a JWT token and return claims
+      operationId: validateToken
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateTokenRequest'
+      responses:
+        '200':
+          description: Token is valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateTokenResponse'
+        '401':
+          description: Token is invalid or expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh access token
+      description: Generate a new access token using refresh token
+      operationId: refreshToken
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshTokenResponse'
+        '401':
+          description: Invalid refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout user
+      description: Invalidate user tokens (add to blacklist)
+      operationId: logout
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          description: Username or email
+          example: "jdoe"
+        password:
+          type: string
+          format: password
+          description: User password
+          example: "SecureP@ssw0rd"
+
+    LoginResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          description: JWT access token
+        refreshToken:
+          type: string
+          description: JWT refresh token
+        tokenType:
+          type: string
+          default: Bearer
+        expiresIn:
+          type: integer
+          format: int64
+          description: Access token expiration in seconds
+        userId:
+          type: string
+          description: User ID
+        username:
+          type: string
+          description: Username
+        roles:
+          type: array
+          items:
+            type: string
+          description: User roles
+        userType:
+          type: string
+          enum: [ADMIN, EMPLOYEE, CUSTOMER, YANKI_USER, BOOTCOIN_USER]
+
+    RegisterRequest:
+      type: object
+      required:
+        - username
+        - email
+        - password
+        - documentType
+        - documentNumber
+        - phoneNumber
+        - userType
+      properties:
+        username:
+          type: string
+          minLength: 4
+          maxLength: 50
+          pattern: '^[a-zA-Z0-9_]+$'
+          description: Alphanumeric username
+          example: "jdoe"
+        email:
+          type: string
+          format: email
+          description: Valid email address
+          example: "john.doe@example.com"
+        password:
+          type: string
+          format: password
+          minLength: 8
+          description: Strong password (min 8 chars, uppercase, lowercase, number, special char)
+          example: "SecureP@ssw0rd"
+        documentType:
+          type: string
+          enum: [DNI, CEX, PASAPORTE]
+          description: Document type
+        documentNumber:
+          type: string
+          description: Document number
+          example: "12345678"
+        phoneNumber:
+          type: string
+          pattern: '^\+51[0-9]{9}$'
+          description: Phone number (Peruvian format)
+          example: "+51987654321"
+        userType:
+          type: string
+          enum: [CUSTOMER, YANKI_USER, BOOTCOIN_USER]
+          description: User type
+
+    RegisterResponse:
+      type: object
+      properties:
+        userId:
+          type: string
+          description: Generated user ID
+        username:
+          type: string
+        email:
+          type: string
+        message:
+          type: string
+          default: User registered successfully
+
+    ValidateTokenRequest:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          description: JWT token to validate
+
+    ValidateTokenResponse:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        userId:
+          type: string
+        username:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        userType:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+
+    RefreshTokenRequest:
+      type: object
+      required:
+        - refreshToken
+      properties:
+        refreshToken:
+          type: string
+          description: Refresh token
+
+    RefreshTokenResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        tokenType:
+          type: string
+          default: Bearer
+        expiresIn:
+          type: integer
+          format: int64
+
+    LogoutResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          default: Logout successful
+
+    ErrorResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+        error:
+          type: string
+        message:
+          type: string
+        path:
+          type: string
