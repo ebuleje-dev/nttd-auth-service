@@ -1,0 +1,33 @@
+package com.nttd.banking.auth;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.autoconfigure.data.mongo.MongoDataAutoConfiguration;
+import org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration;
+import org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.cloud.netflix.eureka.EurekaClientAutoConfiguration;
+import org.springframework.test.context.ActiveProfiles;
+
+@SpringBootTest(
+	webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+	properties = {
+		"spring.config.import=optional:configserver:http://localhost:8888",
+		"spring.autoconfigure.exclude=" +
+			"org.springframework.boot.autoconfigure.data.mongo.MongoDataAutoConfiguration," +
+			"org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration," +
+			"de.flapdoodle.embed.mongo.spring.autoconfigure.EmbeddedMongoAutoConfiguration," +
+			"org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration," +
+			"org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration," +
+			"org.springframework.cloud.netflix.eureka.EurekaClientAutoConfiguration"
+	}
+)
+@ActiveProfiles("test")
+class AuthServiceApplicationTests {
+
+	@Test
+	void contextLoads() {
+		// Verifica que el contexto de Spring carga correctamente
+	}
+
+}
