@@ -1,0 +1,17 @@
+target/
+.mvn/wrapper/maven-wrapper.jar
+.git
+.gitignore
+.idea
+*.iml
+*.log
+logs/
+README.md
+HELP.md
+.DS_Store
+node_modules/
+*.swp
+*.bak
+*.tmp
+.env
+*.env.local

@@ -4,7 +4,9 @@ import com.nttd.banking.auth.api.ApiApiDelegate;
 import com.nttd.banking.auth.application.mapper.AuthMapper;
 import com.nttd.banking.auth.domain.port.in.LoginUseCase;
 import com.nttd.banking.auth.domain.port.in.LogoutUseCase;
+import com.nttd.banking.auth.domain.port.in.RefreshTokenUseCase;
 import com.nttd.banking.auth.domain.port.in.RegisterUseCase;
+import com.nttd.banking.auth.domain.port.in.ValidateTokenUseCase;
 import com.nttd.banking.auth.model.dto.LoginRequest;
 import com.nttd.banking.auth.model.dto.LoginResponse;
 import com.nttd.banking.auth.model.dto.LogoutResponse;
@@ -14,6 +16,7 @@ import com.nttd.banking.auth.model.dto.RegisterRequest;
 import com.nttd.banking.auth.model.dto.RegisterResponse;
 import com.nttd.banking.auth.model.dto.ValidateTokenRequest;
 import com.nttd.banking.auth.model.dto.ValidateTokenResponse;
+import java.time.ZoneOffset;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -36,6 +39,8 @@ public class AuthApiDelegateImpl implements ApiApiDelegate {
   private final LoginUseCase loginUseCase;
   private final RegisterUseCase registerUseCase;
   private final LogoutUseCase logoutUseCase;
+  private final ValidateTokenUseCase validateTokenUseCase;
+  private final RefreshTokenUseCase refreshTokenUseCase;
   private final AuthMapper mapper;
 
   @Override
@@ -86,15 +91,36 @@ public class AuthApiDelegateImpl implements ApiApiDelegate {
   public Mono<ResponseEntity<ValidateTokenResponse>> validateToken(
       Mono<ValidateTokenRequest> validateTokenRequest,
       ServerWebExchange exchange) {
-    // TODO: Implement in next iteration
-    return Mono.just(ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build());
+
+    return validateTokenRequest
+        .flatMap(req -> validateTokenUseCase.validate(req.getToken()))
+        .map(jwtToken -> {
+          ValidateTokenResponse response = new ValidateTokenResponse();
+          response.setValid(true);
+          response.setUserId(jwtToken.getUserId());
+          response.setUsername(jwtToken.getUsername());
+          response.setRoles(jwtToken.getRoles());
+          response.setUserType(jwtToken.getUserType());
+          response.setExpiresAt(jwtToken.getExpiresAt().atOffset(ZoneOffset.UTC));
+          return ResponseEntity.ok(response);
+        })
+        .doOnSuccess(res -> log.info("Token validated successfully"));
   }
 
   @Override
   public Mono<ResponseEntity<RefreshTokenResponse>> refreshToken(
       Mono<RefreshTokenRequest> refreshTokenRequest,
       ServerWebExchange exchange) {
-    // TODO: Implement in next iteration
-    return Mono.just(ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build());
+
+    return refreshTokenRequest
+        .flatMap(req -> refreshTokenUseCase.refresh(req.getRefreshToken()))
+        .map(result -> {
+          RefreshTokenResponse response = new RefreshTokenResponse();
+          response.setAccessToken(result.accessToken());
+          response.setTokenType("Bearer");
+          response.setExpiresIn(result.expiresIn());
+          return ResponseEntity.ok(response);
+        })
+        .doOnSuccess(res -> log.info("Token refreshed successfully"));
   }
 }

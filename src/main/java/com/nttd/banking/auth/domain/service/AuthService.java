@@ -1,19 +1,28 @@
 package com.nttd.banking.auth.domain.service;
 
 import com.nttd.banking.auth.application.exception.InvalidCredentialsException;
+import com.nttd.banking.auth.application.exception.TokenExpiredException;
 import com.nttd.banking.auth.application.exception.TooManyLoginAttemptsException;
 import com.nttd.banking.auth.application.exception.UserAlreadyExistsException;
+import com.nttd.banking.auth.domain.event.UserLoginEvent;
+import com.nttd.banking.auth.domain.event.UserRegisteredEvent;
 import com.nttd.banking.auth.domain.model.JwtToken;
 import com.nttd.banking.auth.domain.model.User;
 import com.nttd.banking.auth.domain.model.enums.UserType;
 import com.nttd.banking.auth.domain.port.in.LoginUseCase;
 import com.nttd.banking.auth.domain.port.in.LogoutUseCase;
+import com.nttd.banking.auth.domain.port.in.RefreshTokenUseCase;
 import com.nttd.banking.auth.domain.port.in.RegisterUseCase;
+import com.nttd.banking.auth.domain.port.in.ValidateTokenUseCase;
 import com.nttd.banking.auth.domain.port.out.PasswordEncoder;
 import com.nttd.banking.auth.domain.port.out.TokenCacheRepository;
+import com.nttd.banking.auth.domain.port.out.UserEventPublisher;
 import com.nttd.banking.auth.domain.port.out.UserRepository;
+import io.jsonwebtoken.Claims;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.Date;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,12 +38,14 @@ import reactor.core.publisher.Mono;
 @org.springframework.context.annotation.Profile("!test")
 @RequiredArgsConstructor
 @Slf4j
-public class AuthService implements LoginUseCase, RegisterUseCase, LogoutUseCase {
+public class AuthService implements LoginUseCase, RegisterUseCase, LogoutUseCase,
+    RefreshTokenUseCase, ValidateTokenUseCase {
 
   private final UserRepository userRepository;
   private final TokenCacheRepository tokenCache;
   private final PasswordEncoder passwordEncoder;
   private final JwtService jwtService;
+  private final UserEventPublisher eventPublisher;
 
   private static final int MAX_LOGIN_ATTEMPTS = 5;
 
@@ -77,7 +88,22 @@ public class AuthService implements LoginUseCase, RegisterUseCase, LogoutUseCase
               .build();
 
           return userRepository.save(user);
-        }));
+        }))
+        .flatMap(savedUser -> {
+          UserRegisteredEvent event = UserRegisteredEvent.builder()
+              .userId(savedUser.getId())
+              .username(savedUser.getUsername())
+              .email(savedUser.getEmail())
+              .documentType(savedUser.getDocumentType())
+              .documentNumber(savedUser.getDocumentNumber())
+              .phoneNumber(savedUser.getPhoneNumber())
+              .userType(savedUser.getUserType().name())
+              .registeredAt(savedUser.getCreatedAt())
+              .build();
+
+          return eventPublisher.publishUserRegistered(event)
+              .thenReturn(savedUser);
+        });
   }
 
   @Override
@@ -156,15 +182,26 @@ public class AuthService implements LoginUseCase, RegisterUseCase, LogoutUseCase
     // Register active token in Redis
     Duration ttl = Duration.ofHours(24);
     return tokenCache.registerActiveToken(user.getId(), accessTokenMetadata.getJti(), ttl)
-        .thenReturn(new LoginResult(
-            accessToken,
-            refreshToken,
-            ttl.getSeconds(),
-            user.getId(),
-            user.getUsername(),
-            user.getRoles(),
-            user.getUserType().name()
-        ));
+        .then(Mono.defer(() -> {
+          LoginResult loginResult = new LoginResult(
+              accessToken,
+              refreshToken,
+              ttl.getSeconds(),
+              user.getId(),
+              user.getUsername(),
+              user.getRoles(),
+              user.getUserType().name()
+          );
+
+          UserLoginEvent event = UserLoginEvent.builder()
+              .userId(user.getId())
+              .username(user.getUsername())
+              .loginAt(LocalDateTime.now())
+              .build();
+
+          return eventPublisher.publishUserLogin(event)
+              .thenReturn(loginResult);
+        }));
   }
 
   /**
@@ -179,5 +216,76 @@ public class AuthService implements LoginUseCase, RegisterUseCase, LogoutUseCase
       case "BOOTCOIN_USER" -> List.of("ROLE_BOOTCOIN_USER");
       default -> List.of();
     };
+  }
+
+  @Override
+  public Mono<RefreshResult> refresh(String refreshToken) {
+    return Mono.fromCallable(() -> jwtService.validateAndGetClaims(refreshToken))
+        .flatMap(claims -> {
+          String userId = claims.getSubject();
+          String jti = claims.getId();
+
+          // Verify not blacklisted
+          return tokenCache.isBlacklisted(jti)
+              .flatMap(isBlacklisted -> {
+                if (Boolean.TRUE.equals(isBlacklisted)) {
+                  return Mono.error(new TokenExpiredException("Refresh token revoked"));
+                }
+
+                // Get user and generate new access token
+                return userRepository.findById(userId)
+                    .switchIfEmpty(Mono.error(
+                        new InvalidCredentialsException("User not found")))
+                    .flatMap(user -> {
+                      String newAccessToken = jwtService.generateAccessTokenString(user);
+                      Duration ttl = Duration.ofHours(24);
+
+                      return Mono.just(new RefreshResult(
+                          newAccessToken,
+                          ttl.getSeconds()
+                      ));
+                    });
+              });
+        })
+        .onErrorMap(io.jsonwebtoken.JwtException.class, e ->
+            new TokenExpiredException("Invalid or expired refresh token"));
+  }
+
+  @Override
+  public Mono<JwtToken> validate(String token) {
+    return Mono.fromCallable(() -> jwtService.validateAndGetClaims(token))
+        .flatMap(claims -> {
+          String jti = claims.getId();
+
+          // Verify not blacklisted
+          return tokenCache.isBlacklisted(jti)
+              .flatMap(isBlacklisted -> {
+                if (Boolean.TRUE.equals(isBlacklisted)) {
+                  return Mono.error(new TokenExpiredException("Token revoked"));
+                }
+
+                JwtToken jwtToken = JwtToken.builder()
+                    .jti(jti)
+                    .userId(claims.getSubject())
+                    .username(claims.get("username", String.class))
+                    .roles((List<String>) claims.get("roles"))
+                    .userType(claims.get("userType", String.class))
+                    .issuedAt(toLocalDateTime(claims.getIssuedAt()))
+                    .expiresAt(toLocalDateTime(claims.getExpiration()))
+                    .tokenType(claims.get("tokenType", String.class))
+                    .build();
+
+                return Mono.just(jwtToken);
+              });
+        })
+        .onErrorMap(io.jsonwebtoken.JwtException.class, e ->
+            new TokenExpiredException("Invalid or expired token"));
+  }
+
+  /**
+   * Converts Date to LocalDateTime.
+   */
+  private LocalDateTime toLocalDateTime(Date date) {
+    return LocalDateTime.ofInstant(date.toInstant(), ZoneId.systemDefault());
   }
 }
