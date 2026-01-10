@@ -1,7 +1,8 @@
-package com.nttd.banking.auth.domain.service;
+package com.nttd.banking.auth.infrastructure.adapter.out.security;
 
 import com.nttd.banking.auth.domain.model.JwtToken;
 import com.nttd.banking.auth.domain.model.User;
+import com.nttd.banking.auth.domain.port.out.JwtProvider;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import java.security.PrivateKey;
@@ -9,30 +10,28 @@ import java.security.PublicKey;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
 /**
- * JWT service for token generation and validation.
+ * JWT provider implementation using JJWT library.
  * Only loads when not in test profile.
  */
-@Service
+@Component
 @org.springframework.context.annotation.Profile("!test")
 @RequiredArgsConstructor
 @Slf4j
-public class JwtService {
+public class JwtProviderImpl implements JwtProvider {
 
   private final PrivateKey privateKey;
   private final PublicKey publicKey;
   private final long accessTokenExpiration;
   private final long refreshTokenExpiration;
 
-  /**
-   * Generates an access token for a user and returns metadata.
-   */
+  @Override
   public JwtToken generateAccessToken(User user) {
     Date now = new Date();
     Date expiryDate = new Date(now.getTime() + accessTokenExpiration);
@@ -52,9 +51,7 @@ public class JwtService {
         .build();
   }
 
-  /**
-   * Generates an access token string (JWT) for a user.
-   */
+  @Override
   public String generateAccessTokenString(User user) {
     Date now = new Date();
     Date expiryDate = new Date(now.getTime() + accessTokenExpiration);
@@ -73,9 +70,7 @@ public class JwtService {
         .compact();
   }
 
-  /**
-   * Generates a refresh token for a user.
-   */
+  @Override
   public String generateRefreshToken(User user) {
     Date now = new Date();
     Date expiryDate = new Date(now.getTime() + refreshTokenExpiration);
@@ -90,22 +85,42 @@ public class JwtService {
         .compact();
   }
 
-  /**
-   * Validates a token and extracts claims.
-   */
-  public Claims validateAndGetClaims(String token) {
-    return Jwts.parser()
+  @Override
+  public JwtToken validateToken(String token) {
+    Claims claims = Jwts.parser()
         .verifyWith(publicKey)
         .build()
         .parseSignedClaims(token)
         .getPayload();
+
+    @SuppressWarnings("unchecked")
+    List<String> roles = (List<String>) claims.get("roles");
+
+    return JwtToken.builder()
+        .jti(claims.getId())
+        .userId(claims.getSubject())
+        .username(claims.get("username", String.class))
+        .roles(roles)
+        .userType(claims.get("userType", String.class))
+        .issuedAt(toLocalDateTime(claims.getIssuedAt()))
+        .expiresAt(toLocalDateTime(claims.getExpiration()))
+        .tokenType(claims.get("tokenType", String.class))
+        .build();
   }
 
-  /**
-   * Extracts JTI from token.
-   */
+  @Override
   public String extractJti(String token) {
-    return validateAndGetClaims(token).getId();
+    Claims claims = Jwts.parser()
+        .verifyWith(publicKey)
+        .build()
+        .parseSignedClaims(token)
+        .getPayload();
+    return claims.getId();
+  }
+
+  @Override
+  public long getAccessTokenExpiration() {
+    return accessTokenExpiration / 1000; // Convert to seconds
   }
 
   /**

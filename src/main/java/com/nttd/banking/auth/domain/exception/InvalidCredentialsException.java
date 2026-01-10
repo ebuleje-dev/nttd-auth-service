@@ -1,4 +1,4 @@
-package com.nttd.banking.auth.application.exception;
+package com.nttd.banking.auth.domain.exception;
 
 /**
  * Exception thrown when user provides invalid credentials.

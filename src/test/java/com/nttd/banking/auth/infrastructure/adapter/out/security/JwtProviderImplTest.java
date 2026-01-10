@@ -1,11 +1,10 @@
-package com.nttd.banking.auth.domain.service;
+package com.nttd.banking.auth.infrastructure.adapter.out.security;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.nttd.banking.auth.domain.model.JwtToken;
 import com.nttd.banking.auth.domain.model.User;
 import com.nttd.banking.auth.domain.model.enums.UserType;
-import io.jsonwebtoken.Claims;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
@@ -15,9 +14,9 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-class JwtServiceTest {
+class JwtProviderImplTest {
 
-  private JwtService jwtService;
+  private JwtProviderImpl jwtProvider;
   private PrivateKey privateKey;
   private PublicKey publicKey;
   private User testUser;
@@ -31,7 +30,7 @@ class JwtServiceTest {
     privateKey = keyPair.getPrivate();
     publicKey = keyPair.getPublic();
 
-    jwtService = new JwtService(
+    jwtProvider = new JwtProviderImpl(
         privateKey,
         publicKey,
         86400000L, // 24 hours
@@ -57,7 +56,7 @@ class JwtServiceTest {
   @Test
   void whenGenerateAccessToken_thenReturnsValidMetadata() {
     // When
-    JwtToken token = jwtService.generateAccessToken(testUser);
+    JwtToken token = jwtProvider.generateAccessToken(testUser);
 
     // Then
     assertNotNull(token);
@@ -75,44 +74,44 @@ class JwtServiceTest {
   @Test
   void whenGenerateAccessTokenString_thenReturnsValidJwt() {
     // When
-    String tokenString = jwtService.generateAccessTokenString(testUser);
+    String tokenString = jwtProvider.generateAccessTokenString(testUser);
 
     // Then
     assertNotNull(tokenString);
-    assertTrue(tokenString.split("\\.").length == 3); // JWT has 3 parts
+    assertEquals(3, tokenString.split("\\.").length); // JWT has 3 parts
 
     // Validate the token
-    Claims claims = jwtService.validateAndGetClaims(tokenString);
-    assertNotNull(claims);
-    assertEquals("user123", claims.getSubject());
-    assertEquals("testuser", claims.get("username", String.class));
-    assertEquals("CUSTOMER", claims.get("userType", String.class));
-    assertEquals("ACCESS", claims.get("tokenType", String.class));
+    JwtToken jwtToken = jwtProvider.validateToken(tokenString);
+    assertNotNull(jwtToken);
+    assertEquals("user123", jwtToken.getUserId());
+    assertEquals("testuser", jwtToken.getUsername());
+    assertEquals("CUSTOMER", jwtToken.getUserType());
+    assertEquals("ACCESS", jwtToken.getTokenType());
   }
 
   @Test
   void whenGenerateRefreshToken_thenReturnsValidJwt() {
     // When
-    String refreshToken = jwtService.generateRefreshToken(testUser);
+    String refreshToken = jwtProvider.generateRefreshToken(testUser);
 
     // Then
     assertNotNull(refreshToken);
-    assertTrue(refreshToken.split("\\.").length == 3);
+    assertEquals(3, refreshToken.split("\\.").length);
 
     // Validate the token
-    Claims claims = jwtService.validateAndGetClaims(refreshToken);
-    assertNotNull(claims);
-    assertEquals("user123", claims.getSubject());
-    assertEquals("REFRESH", claims.get("tokenType", String.class));
+    JwtToken jwtToken = jwtProvider.validateToken(refreshToken);
+    assertNotNull(jwtToken);
+    assertEquals("user123", jwtToken.getUserId());
+    assertEquals("REFRESH", jwtToken.getTokenType());
   }
 
   @Test
   void whenExtractJti_thenReturnsCorrectJti() {
     // Given
-    String token = jwtService.generateAccessTokenString(testUser);
+    String token = jwtProvider.generateAccessTokenString(testUser);
 
     // When
-    String jti = jwtService.extractJti(token);
+    String jti = jwtProvider.extractJti(token);
 
     // Then
     assertNotNull(jti);
@@ -120,21 +119,20 @@ class JwtServiceTest {
   }
 
   @Test
-  void whenValidateAndGetClaims_thenReturnsClaims() {
+  void whenValidateToken_thenReturnsJwtToken() {
     // Given
-    String token = jwtService.generateAccessTokenString(testUser);
+    String token = jwtProvider.generateAccessTokenString(testUser);
 
     // When
-    Claims claims = jwtService.validateAndGetClaims(token);
+    JwtToken jwtToken = jwtProvider.validateToken(token);
 
     // Then
-    assertNotNull(claims);
-    assertEquals("user123", claims.getSubject());
-    assertEquals("testuser", claims.get("username", String.class));
-    assertEquals("test@example.com", claims.get("email", String.class));
-    assertNotNull(claims.get("roles"));
-    assertEquals("CUSTOMER", claims.get("userType", String.class));
-    assertEquals("ACCESS", claims.get("tokenType", String.class));
+    assertNotNull(jwtToken);
+    assertEquals("user123", jwtToken.getUserId());
+    assertEquals("testuser", jwtToken.getUsername());
+    assertNotNull(jwtToken.getRoles());
+    assertEquals("CUSTOMER", jwtToken.getUserType());
+    assertEquals("ACCESS", jwtToken.getTokenType());
   }
 
   @Test
@@ -144,7 +142,7 @@ class JwtServiceTest {
 
     // When & Then
     assertThrows(Exception.class, () -> {
-      jwtService.validateAndGetClaims(invalidToken);
+      jwtProvider.validateToken(invalidToken);
     });
   }
 
@@ -155,35 +153,44 @@ class JwtServiceTest {
     keyGen.initialize(2048);
     KeyPair differentKeyPair = keyGen.generateKeyPair();
 
-    JwtService otherJwtService = new JwtService(
+    JwtProviderImpl otherJwtProvider = new JwtProviderImpl(
         differentKeyPair.getPrivate(),
         differentKeyPair.getPublic(),
         86400000L,
         604800000L
     );
 
-    String tokenFromOtherService = otherJwtService.generateAccessTokenString(testUser);
+    String tokenFromOtherProvider = otherJwtProvider.generateAccessTokenString(testUser);
 
-    // When & Then - This service should not validate token from other service
+    // When & Then - This provider should not validate token from other provider
     assertThrows(Exception.class, () -> {
-      jwtService.validateAndGetClaims(tokenFromOtherService);
+      jwtProvider.validateToken(tokenFromOtherProvider);
     });
   }
 
   @Test
   void whenGenerateMultipleTokens_thenEachHasUniqueJti() {
     // When
-    String token1 = jwtService.generateAccessTokenString(testUser);
-    String token2 = jwtService.generateAccessTokenString(testUser);
-    String token3 = jwtService.generateAccessTokenString(testUser);
+    String token1 = jwtProvider.generateAccessTokenString(testUser);
+    String token2 = jwtProvider.generateAccessTokenString(testUser);
+    String token3 = jwtProvider.generateAccessTokenString(testUser);
 
     // Then
-    String jti1 = jwtService.extractJti(token1);
-    String jti2 = jwtService.extractJti(token2);
-    String jti3 = jwtService.extractJti(token3);
+    String jti1 = jwtProvider.extractJti(token1);
+    String jti2 = jwtProvider.extractJti(token2);
+    String jti3 = jwtProvider.extractJti(token3);
 
     assertNotEquals(jti1, jti2);
     assertNotEquals(jti1, jti3);
     assertNotEquals(jti2, jti3);
+  }
+
+  @Test
+  void whenGetAccessTokenExpiration_thenReturnsSeconds() {
+    // When
+    long expirationSeconds = jwtProvider.getAccessTokenExpiration();
+
+    // Then
+    assertEquals(86400, expirationSeconds); // 24 hours in seconds
   }
 }

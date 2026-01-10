@@ -1,4 +1,4 @@
-package com.nttd.banking.auth.application.exception;
+package com.nttd.banking.auth.domain.exception;
 
 /**
  * Exception thrown when attempting to register a user that already exists.

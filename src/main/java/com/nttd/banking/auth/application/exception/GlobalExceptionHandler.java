@@ -1,5 +1,9 @@
 package com.nttd.banking.auth.application.exception;
 
+import com.nttd.banking.auth.domain.exception.InvalidCredentialsException;
+import com.nttd.banking.auth.domain.exception.TokenExpiredException;
+import com.nttd.banking.auth.domain.exception.TooManyLoginAttemptsException;
+import com.nttd.banking.auth.domain.exception.UserAlreadyExistsException;
 import com.nttd.banking.auth.model.dto.ErrorResponse;
 import java.time.OffsetDateTime;
 import lombok.extern.slf4j.Slf4j;
@@ -66,6 +70,23 @@ public class GlobalExceptionHandler {
     error.setMessage(ex.getMessage());
 
     return Mono.just(ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(error));
+  }
+
+  /**
+   * Handles token expired exception.
+   */
+  @ExceptionHandler(TokenExpiredException.class)
+  public Mono<ResponseEntity<ErrorResponse>> handleTokenExpired(
+      TokenExpiredException ex) {
+    log.error("Token expired: {}", ex.getMessage());
+
+    ErrorResponse error = new ErrorResponse();
+    error.setTimestamp(OffsetDateTime.now());
+    error.setStatus(HttpStatus.UNAUTHORIZED.value());
+    error.setError("Unauthorized");
+    error.setMessage(ex.getMessage());
+
+    return Mono.just(ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(error));
   }
 
   /**
