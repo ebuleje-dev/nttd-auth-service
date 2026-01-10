@@ -165,6 +165,27 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/auth/.well-known/jwks.json:
+    get:
+      tags:
+        - Authentication
+      summary: Get JSON Web Key Set
+      description: Returns the public RSA key in JWKS format for JWT validation
+      operationId: getJwks
+      responses:
+        '200':
+          description: JWKS retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JwksResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -351,3 +372,40 @@ components:
           type: string
         path:
           type: string
+
+    JwksResponse:
+      type: object
+      description: JSON Web Key Set containing public keys for JWT validation
+      properties:
+        keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/JwkKey'
+
+    JwkKey:
+      type: object
+      description: JSON Web Key representing a public RSA key
+      properties:
+        kty:
+          type: string
+          description: Key type (RSA)
+          example: "RSA"
+        alg:
+          type: string
+          description: Algorithm (RS256)
+          example: "RS256"
+        use:
+          type: string
+          description: Key usage (sig for signature)
+          example: "sig"
+        kid:
+          type: string
+          description: Key ID
+          example: "auth-service-key-1"
+        n:
+          type: string
+          description: RSA modulus (Base64URL encoded)
+        e:
+          type: string
+          description: RSA exponent (Base64URL encoded)
+          example: "AQAB"

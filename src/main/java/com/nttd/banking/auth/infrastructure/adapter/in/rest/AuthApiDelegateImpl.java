@@ -2,11 +2,14 @@ package com.nttd.banking.auth.infrastructure.adapter.in.rest;
 
 import com.nttd.banking.auth.api.ApiApiDelegate;
 import com.nttd.banking.auth.application.mapper.AuthMapper;
+import com.nttd.banking.auth.domain.port.in.GetJwksUseCase;
 import com.nttd.banking.auth.domain.port.in.LoginUseCase;
 import com.nttd.banking.auth.domain.port.in.LogoutUseCase;
 import com.nttd.banking.auth.domain.port.in.RefreshTokenUseCase;
 import com.nttd.banking.auth.domain.port.in.RegisterUseCase;
 import com.nttd.banking.auth.domain.port.in.ValidateTokenUseCase;
+import com.nttd.banking.auth.model.dto.JwkKey;
+import com.nttd.banking.auth.model.dto.JwksResponse;
 import com.nttd.banking.auth.model.dto.LoginRequest;
 import com.nttd.banking.auth.model.dto.LoginResponse;
 import com.nttd.banking.auth.model.dto.LogoutResponse;
@@ -17,6 +20,7 @@ import com.nttd.banking.auth.model.dto.RegisterResponse;
 import com.nttd.banking.auth.model.dto.ValidateTokenRequest;
 import com.nttd.banking.auth.model.dto.ValidateTokenResponse;
 import java.time.ZoneOffset;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -41,6 +45,7 @@ public class AuthApiDelegateImpl implements ApiApiDelegate {
   private final LogoutUseCase logoutUseCase;
   private final ValidateTokenUseCase validateTokenUseCase;
   private final RefreshTokenUseCase refreshTokenUseCase;
+  private final GetJwksUseCase getJwksUseCase;
   private final AuthMapper mapper;
 
   @Override
@@ -122,5 +127,29 @@ public class AuthApiDelegateImpl implements ApiApiDelegate {
           return ResponseEntity.ok(response);
         })
         .doOnSuccess(res -> log.info("Token refreshed successfully"));
+  }
+
+  @Override
+  public Mono<ResponseEntity<JwksResponse>> getJwks(ServerWebExchange exchange) {
+    return getJwksUseCase.getJwks()
+        .map(jwks -> {
+          JwksResponse response = new JwksResponse();
+          response.setKeys(
+              jwks.getKeys().stream()
+                  .map(key -> {
+                    JwkKey jwkKey = new JwkKey();
+                    jwkKey.setKty(key.getKty());
+                    jwkKey.setAlg(key.getAlg());
+                    jwkKey.setUse(key.getUse());
+                    jwkKey.setKid(key.getKid());
+                    jwkKey.setN(key.getN());
+                    jwkKey.setE(key.getE());
+                    return jwkKey;
+                  })
+                  .collect(Collectors.toList())
+          );
+          return ResponseEntity.ok(response);
+        })
+        .doOnSuccess(res -> log.debug("JWKS retrieved successfully"));
   }
 }

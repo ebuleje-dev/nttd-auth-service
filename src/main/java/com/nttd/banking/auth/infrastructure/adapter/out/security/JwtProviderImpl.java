@@ -123,6 +123,11 @@ public class JwtProviderImpl implements JwtProvider {
     return accessTokenExpiration / 1000; // Convert to seconds
   }
 
+  @Override
+  public PublicKey getPublicKey() {
+    return publicKey;
+  }
+
   /**
    * Converts Date to LocalDateTime.
    */

@@ -56,4 +56,11 @@ public interface JwtProvider {
    * @return expiration time in seconds
    */
   long getAccessTokenExpiration();
+
+  /**
+   * Gets the public key used for token verification.
+   *
+   * @return the RSA public key
+   */
+  java.security.PublicKey getPublicKey();
 }
