@@ -2,7 +2,6 @@ package com.nttd.banking.auth.application.usecase;
 
 import com.nttd.banking.auth.domain.event.UserLoginEvent;
 import com.nttd.banking.auth.domain.exception.InvalidCredentialsException;
-import com.nttd.banking.auth.domain.model.JwtToken;
 import com.nttd.banking.auth.domain.model.User;
 import com.nttd.banking.auth.domain.port.in.LoginUseCase;
 import com.nttd.banking.auth.domain.port.out.JwtProvider;
@@ -60,18 +59,24 @@ public class LoginUseCaseImpl implements LoginUseCase {
    * Generates access and refresh tokens.
    */
   private Mono<LoginResult> generateTokens(User user) {
-    JwtToken accessTokenMetadata = jwtProvider.generateAccessToken(user);
     String accessToken = jwtProvider.generateAccessTokenString(user);
     String refreshToken = jwtProvider.generateRefreshToken(user);
 
-    // Register active token in Redis
-    Duration ttl = Duration.ofSeconds(jwtProvider.getAccessTokenExpiration());
-    return tokenCache.registerActiveToken(user.getId(), accessTokenMetadata.getJti(), ttl)
+    // Extract JTIs from generated tokens
+    String accessJti = jwtProvider.extractJti(accessToken);
+    String refreshJti = jwtProvider.extractJti(refreshToken);
+
+    Duration accessTtl = Duration.ofSeconds(jwtProvider.getAccessTokenExpiration());
+    Duration refreshTtl = Duration.ofDays(7); // Refresh token TTL
+
+    // Register active token and save token pair relationship
+    return tokenCache.registerActiveToken(user.getId(), accessJti, accessTtl)
+        .then(tokenCache.saveTokenPair(accessJti, refreshJti, refreshTtl))
         .then(Mono.defer(() -> {
           LoginResult loginResult = new LoginResult(
               accessToken,
               refreshToken,
-              ttl.getSeconds(),
+              accessTtl.getSeconds(),
               user.getId(),
               user.getUsername(),
               user.getRoles(),

@@ -24,6 +24,7 @@ public class TokenRedisAdapter implements TokenCacheRepository {
   private static final String BLACKLIST_PREFIX = "token:blacklist:";
   private static final String ACTIVE_PREFIX = "token:active:";
   private static final String LOGIN_ATTEMPTS_PREFIX = "user:login-attempts:";
+  private static final String TOKEN_PAIR_PREFIX = "token:pair:";
 
   @Override
   public Mono<Void> addToBlacklist(String jti, Duration ttl) {
@@ -81,5 +82,28 @@ public class TokenRedisAdapter implements TokenCacheRepository {
         .get(key)
         .map(Long::parseLong)
         .defaultIfEmpty(0L);
+  }
+
+  @Override
+  public Mono<Void> saveTokenPair(String accessJti, String refreshJti, Duration ttl) {
+    String key = TOKEN_PAIR_PREFIX + accessJti;
+    return redisTemplate.opsForValue()
+        .set(key, refreshJti, ttl)
+        .doOnSuccess(v -> log.debug("Token pair saved: {} -> {}", accessJti, refreshJti))
+        .then();
+  }
+
+  @Override
+  public Mono<String> getRefreshJtiByAccessJti(String accessJti) {
+    String key = TOKEN_PAIR_PREFIX + accessJti;
+    return redisTemplate.opsForValue().get(key);
+  }
+
+  @Override
+  public Mono<Void> removeTokenPair(String accessJti) {
+    String key = TOKEN_PAIR_PREFIX + accessJti;
+    return redisTemplate.delete(key)
+        .doOnSuccess(v -> log.debug("Token pair removed for accessJti: {}", accessJti))
+        .then();
   }
 }

@@ -7,7 +7,6 @@ import static org.mockito.Mockito.*;
 import com.nttd.banking.auth.domain.event.UserLoginEvent;
 import com.nttd.banking.auth.domain.exception.InvalidCredentialsException;
 import com.nttd.banking.auth.domain.exception.TooManyLoginAttemptsException;
-import com.nttd.banking.auth.domain.model.JwtToken;
 import com.nttd.banking.auth.domain.model.User;
 import com.nttd.banking.auth.domain.model.enums.UserType;
 import com.nttd.banking.auth.domain.port.out.JwtProvider;
@@ -82,22 +81,14 @@ class LoginUseCaseImplTest {
     when(tokenCache.resetLoginAttempts(anyString())).thenReturn(Mono.empty());
     when(userRepository.save(any(User.class))).thenReturn(Mono.just(testUser));
 
-    JwtToken jwtToken = JwtToken.builder()
-        .jti("jti123")
-        .userId("user123")
-        .username("testuser")
-        .roles(List.of("ROLE_CUSTOMER"))
-        .userType("CUSTOMER")
-        .issuedAt(LocalDateTime.now())
-        .expiresAt(LocalDateTime.now().plusDays(1))
-        .tokenType("ACCESS")
-        .build();
-
-    when(jwtProvider.generateAccessToken(any(User.class))).thenReturn(jwtToken);
     when(jwtProvider.generateAccessTokenString(any(User.class))).thenReturn("access.token.here");
     when(jwtProvider.generateRefreshToken(any(User.class))).thenReturn("refresh.token.here");
+    when(jwtProvider.extractJti("access.token.here")).thenReturn("accessJti123");
+    when(jwtProvider.extractJti("refresh.token.here")).thenReturn("refreshJti456");
     when(jwtProvider.getAccessTokenExpiration()).thenReturn(86400L);
     when(tokenCache.registerActiveToken(anyString(), anyString(), any(Duration.class)))
+        .thenReturn(Mono.empty());
+    when(tokenCache.saveTokenPair(anyString(), anyString(), any(Duration.class)))
         .thenReturn(Mono.empty());
     when(eventPublisher.publishUserLogin(any(UserLoginEvent.class))).thenReturn(Mono.empty());
 

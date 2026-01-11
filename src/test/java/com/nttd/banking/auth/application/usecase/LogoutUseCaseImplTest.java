@@ -27,17 +27,46 @@ class LogoutUseCaseImplTest {
   private LogoutUseCaseImpl logoutUseCase;
 
   @Test
-  void whenLogout_thenAddsTokenToBlacklist() {
+  void whenLogout_thenBlacklistsBothTokens() {
     // Given
     String token = "valid.jwt.token";
-    when(jwtProvider.extractJti(token)).thenReturn("jti123");
+    String accessJti = "accessJti123";
+    String refreshJti = "refreshJti456";
+
+    when(jwtProvider.extractJti(token)).thenReturn(accessJti);
     when(jwtProvider.getAccessTokenExpiration()).thenReturn(86400L);
-    when(tokenCache.addToBlacklist(anyString(), any(Duration.class))).thenReturn(Mono.empty());
+    when(tokenCache.addToBlacklist(eq(accessJti), any(Duration.class))).thenReturn(Mono.empty());
+    when(tokenCache.getRefreshJtiByAccessJti(accessJti)).thenReturn(Mono.just(refreshJti));
+    when(tokenCache.addToBlacklist(eq(refreshJti), any(Duration.class))).thenReturn(Mono.empty());
+    when(tokenCache.removeTokenPair(accessJti)).thenReturn(Mono.empty());
 
     // When & Then
     StepVerifier.create(logoutUseCase.logout(token))
         .verifyComplete();
 
-    verify(tokenCache).addToBlacklist(eq("jti123"), any(Duration.class));
+    // Verify both tokens were blacklisted
+    verify(tokenCache).addToBlacklist(eq(accessJti), any(Duration.class));
+    verify(tokenCache).addToBlacklist(eq(refreshJti), any(Duration.class));
+    verify(tokenCache).removeTokenPair(accessJti);
+  }
+
+  @Test
+  void whenLogout_withNoRefreshToken_thenOnlyBlacklistsAccessToken() {
+    // Given
+    String token = "valid.jwt.token";
+    String accessJti = "accessJti123";
+
+    when(jwtProvider.extractJti(token)).thenReturn(accessJti);
+    when(jwtProvider.getAccessTokenExpiration()).thenReturn(86400L);
+    when(tokenCache.addToBlacklist(eq(accessJti), any(Duration.class))).thenReturn(Mono.empty());
+    when(tokenCache.getRefreshJtiByAccessJti(accessJti)).thenReturn(Mono.empty());
+
+    // When & Then
+    StepVerifier.create(logoutUseCase.logout(token))
+        .verifyComplete();
+
+    // Verify only access token was blacklisted
+    verify(tokenCache).addToBlacklist(eq(accessJti), any(Duration.class));
+    verify(tokenCache, never()).removeTokenPair(anyString());
   }
 }
